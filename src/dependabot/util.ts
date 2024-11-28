@@ -1,6 +1,7 @@
 import { Context } from '@actions/github/lib/context'
+import { GitHub } from '@actions/github/lib/utils'
 
-export function parseNwo (nwo: string): {owner: string; repo: string} {
+export function parseNwo (nwo: string): { owner: string; repo: string } {
   const [owner, name] = nwo.split('/')
 
   if (!owner || !name) {
@@ -15,12 +16,54 @@ export interface branchNames {
   baseName: string
 }
 
+interface ref {
+  ref: string
+  sha: string
+  repo: {
+    id: number
+    name: string
+    url: string
+  }
+}
+
+interface prInfo {
+  number: number
+  base: ref
+  head: ref
+  id: number
+  url: string
+  body?: string
+}
+
 export function getBranchNames (context: Context): branchNames {
   const { pull_request: pr } = context.payload
   return { headName: pr?.head.ref || '', baseName: pr?.base.ref }
 }
 
-export function getBody (context: Context): string {
-  const { pull_request: pr } = context.payload
-  return pr?.body || ''
+export async function getBody (context: Context, client: InstanceType<typeof GitHub>): Promise<string> {
+  const pr = getPR(context)
+  if (!pr) {
+    throw new Error('No PR found in context')
+  }
+  if (!pr.body) {
+    client.rest.pulls.get({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number
+    }).then(({ data }) => {
+      return data.body
+    })
+  }
+  return pr.body || ''
+}
+
+export function getPR (context: Context): prInfo | undefined {
+  const pr = context.payload.pull_request as prInfo | undefined
+
+  // if check_suite, pull_requests is an array
+  if (context.eventName === 'check_suite' && context.payload.check_suite.pull_requests && context.payload.check_suite.pull_requests.length > 0) {
+    return context.payload.check_suite.pull_requests[0] as prInfo
+  }
+
+  return pr
 }
