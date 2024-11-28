@@ -68,5 +68,9 @@ export function getPR (context: Context): prInfo | undefined {
     return context.payload.check_suite.pull_requests[0] as prInfo
   }
 
+  if (context.eventName === 'workflow_run' && context.payload.workflow_run.pull_requests && context.payload.workflow_run.pull_requests.length > 0) {
+    return context.payload.workflow_run.pull_requests[0] as prInfo
+  }
+
   return pr
 }
