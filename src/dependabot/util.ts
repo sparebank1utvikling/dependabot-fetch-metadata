@@ -1,3 +1,4 @@
+import * as core from '@actions/core'
 import { Context } from '@actions/github/lib/context'
 import { GitHub } from '@actions/github/lib/utils'
 
@@ -62,6 +63,9 @@ export async function getBody (context: Context, client: InstanceType<typeof Git
 
 export function getPR (context: Context): prInfo | undefined {
   const pr = context.payload.pull_request as prInfo | undefined
+
+  // dump context.payload
+  core.info(JSON.stringify(context.payload, null, 2))
 
   // if check_suite, pull_requests is an array
   if (context.eventName === 'check_suite' && context.payload.check_suite.pull_requests && context.payload.check_suite.pull_requests.length > 0) {
