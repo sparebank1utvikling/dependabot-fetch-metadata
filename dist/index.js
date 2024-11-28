@@ -10162,12 +10162,21 @@ exports.calculateUpdateType = calculateUpdateType;
 /***/ }),
 
 /***/ 6454:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ (function(__unused_webpack_module, exports) {
 
 "use strict";
 
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getBody = exports.getBranchNames = exports.parseNwo = void 0;
+exports.getPR = exports.getBody = exports.getBranchNames = exports.parseNwo = void 0;
 function parseNwo(nwo) {
     const [owner, name] = nwo.split('/');
     if (!owner || !name) {
@@ -10181,11 +10190,34 @@ function getBranchNames(context) {
     return { headName: (pr === null || pr === void 0 ? void 0 : pr.head.ref) || '', baseName: pr === null || pr === void 0 ? void 0 : pr.base.ref };
 }
 exports.getBranchNames = getBranchNames;
-function getBody(context) {
-    const { pull_request: pr } = context.payload;
-    return (pr === null || pr === void 0 ? void 0 : pr.body) || '';
+function getBody(context, client) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const pr = getPR(context);
+        if (!pr) {
+            throw new Error('No PR found in context');
+        }
+        if (!pr.body) {
+            client.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+            }).then(({ data }) => {
+                return data.body;
+            });
+        }
+        return pr.body || '';
+    });
 }
 exports.getBody = getBody;
+function getPR(context) {
+    const pr = context.payload.pull_request;
+    // if check_suite, pull_requests is an array
+    if (context.eventName === 'check_suite' && context.payload.check_suite.pull_requests && context.payload.check_suite.pull_requests.length > 0) {
+        return context.payload.check_suite.pull_requests[0];
+    }
+    return pr;
+}
+exports.getPR = getPR;
 
 
 /***/ }),
@@ -10392,7 +10424,7 @@ function run() {
             // Validate the job
             const commitMessage = yield verifiedCommits.getMessage(githubClient, github.context, core.getBooleanInput('skip-commit-verification'), core.getBooleanInput('skip-verification'));
             const branchNames = util.getBranchNames(github.context);
-            const body = util.getBody(github.context);
+            const body = yield util.getBody(github.context, githubClient);
             let alertLookup;
             if (core.getInput('alert-lookup')) {
                 alertLookup = (name, version, directory) => verifiedCommits.getAlert(name, version, directory, githubClient, github.context);
