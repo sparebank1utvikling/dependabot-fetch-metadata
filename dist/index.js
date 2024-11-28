@@ -10266,9 +10266,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getCompatibility = exports.trimSlashes = exports.getAlert = exports.getMessage = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const https_1 = __importDefault(__nccwpck_require__(5687));
+const util = __importStar(__nccwpck_require__(6454));
 const DEPENDABOT_LOGIN = 'dependabot[bot]';
 function getMessage(client, context, skipCommitVerification = false, skipVerification = false) {
-    var _a;
+    var _a, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
         if (skipVerification) {
             core.debug('Skipping pull request verification');
@@ -10276,15 +10277,14 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
         else {
             core.debug('Verifying the job is for an authentic Dependabot Pull Request');
         }
-        const { pull_request: pr } = context.payload;
+        const pr = util.getPR(context);
         if (!pr) {
             core.warning("Event payload missing `pull_request` key. Make sure you're " +
                 'triggering this action on the `pull_request` or `pull_request_target` events.');
             return false;
         }
-        // Don't bother hitting the API if the PR author isn't Dependabot unless verification is disabled
-        if (!skipVerification && pr.user.login !== DEPENDABOT_LOGIN) {
-            core.debug(`PR author '${pr.user.login}' is not Dependabot.`);
+        if (!skipVerification && ((_a = pr.user) === null || _a === void 0 ? void 0 : _a.login) !== DEPENDABOT_LOGIN) {
+            core.debug(`PR author '${(_b = pr.user) === null || _b === void 0 ? void 0 : _b.login}' is not Dependabot.`);
             return false;
         }
         const { data: commits } = yield client.rest.pulls.listCommits({
@@ -10298,7 +10298,7 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
             core.warning('It looks like this PR was not created by Dependabot, refusing to proceed.');
             return false;
         }
-        if (!skipVerification && !skipCommitVerification && !((_a = commit.verification) === null || _a === void 0 ? void 0 : _a.verified)) {
+        if (!skipVerification && !skipCommitVerification && !((_c = commit.verification) === null || _c === void 0 ? void 0 : _c.verified)) {
             // TODO: Promote to setFailed
             core.warning("Dependabot's commit signature is not verified, refusing to proceed.");
             return false;
