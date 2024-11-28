@@ -10214,8 +10214,14 @@ function parseNwo(nwo) {
 }
 exports.parseNwo = parseNwo;
 function getBranchNames(context) {
-    const { pull_request: pr } = context.payload;
-    return { headName: (pr === null || pr === void 0 ? void 0 : pr.head.ref) || '', baseName: pr === null || pr === void 0 ? void 0 : pr.base.ref };
+    const pr = getPR(context);
+    if (!pr) {
+        throw new Error('No PR found in context');
+    }
+    return {
+        headName: pr.head.ref,
+        baseName: pr.base.ref
+    };
 }
 exports.getBranchNames = getBranchNames;
 function getBody(context, client) {
