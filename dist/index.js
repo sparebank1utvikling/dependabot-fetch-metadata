@@ -10215,6 +10215,9 @@ function getPR(context) {
     if (context.eventName === 'check_suite' && context.payload.check_suite.pull_requests && context.payload.check_suite.pull_requests.length > 0) {
         return context.payload.check_suite.pull_requests[0];
     }
+    if (context.eventName === 'workflow_run' && context.payload.workflow_run.pull_requests && context.payload.workflow_run.pull_requests.length > 0) {
+        return context.payload.workflow_run.pull_requests[0];
+    }
     return pr;
 }
 exports.getPR = getPR;
