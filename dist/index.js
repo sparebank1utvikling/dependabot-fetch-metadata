@@ -10321,6 +10321,7 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
             repo: context.repo.repo,
             pull_number: pr.number
         });
+        core.info(`Found ${commits.length} commits in the PR`);
         const { commit, author } = commits[0];
         if (!skipVerification && (author === null || author === void 0 ? void 0 : author.login) !== DEPENDABOT_LOGIN) {
             // TODO: Promote to setFailed
@@ -10332,6 +10333,7 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
             core.warning("Dependabot's commit signature is not verified, refusing to proceed.");
             return false;
         }
+        core.info(`Returning commit message: ${commit.message}`);
         return commit.message;
     });
 }
@@ -10461,6 +10463,7 @@ function run() {
             const scoreLookup = core.getInput('compat-lookup') ? verifiedCommits.getCompatibility : undefined;
             if (commitMessage) {
                 // Parse metadata
+                core.info(commitMessage);
                 core.info('Parsing Dependabot metadata');
                 const updatedDependencies = yield updateMetadata.parse(commitMessage, body, branchNames.headName, branchNames.baseName, alertLookup, scoreLookup);
                 if (updatedDependencies.length > 0) {
