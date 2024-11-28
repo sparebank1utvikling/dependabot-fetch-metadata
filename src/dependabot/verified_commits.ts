@@ -3,6 +3,7 @@ import { GitHub } from '@actions/github/lib/utils'
 import { Context } from '@actions/github/lib/context'
 import type { dependencyAlert } from './update_metadata'
 import https from 'https'
+import * as util from './util'
 
 const DEPENDABOT_LOGIN = 'dependabot[bot]'
 
@@ -13,19 +14,18 @@ export async function getMessage (client: InstanceType<typeof GitHub>, context: 
     core.debug('Verifying the job is for an authentic Dependabot Pull Request')
   }
 
-  const { pull_request: pr } = context.payload
+  const pr = util.getPR(context)
 
   if (!pr) {
     core.warning(
       "Event payload missing `pull_request` key. Make sure you're " +
-        'triggering this action on the `pull_request` or `pull_request_target` events.'
+      'triggering this action on the `pull_request` or `pull_request_target` events.'
     )
     return false
   }
 
-  // Don't bother hitting the API if the PR author isn't Dependabot unless verification is disabled
-  if (!skipVerification && pr.user.login !== DEPENDABOT_LOGIN) {
-    core.debug(`PR author '${pr.user.login}' is not Dependabot.`)
+  if (!skipVerification && pr.user?.login !== DEPENDABOT_LOGIN) {
+    core.debug(`PR author '${pr.user?.login}' is not Dependabot.`)
     return false
   }
 

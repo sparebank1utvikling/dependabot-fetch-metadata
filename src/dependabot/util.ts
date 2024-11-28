@@ -33,6 +33,9 @@ interface prInfo {
   id: number
   url: string
   body?: string
+  user?: {
+    login: string
+  }
 }
 
 export function getBranchNames (context: Context): branchNames {
