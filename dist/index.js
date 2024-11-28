@@ -10088,6 +10088,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.calculateUpdateType = exports.parse = void 0;
+const core = __importStar(__nccwpck_require__(2186));
 const YAML = __importStar(__nccwpck_require__(4083));
 function branchNameToDirectoryName(chunks, delimiter, updatedDependencies) {
     // We can always slice after the first 2 pieces, because they will always contain "dependabot" followed by the name
@@ -10120,6 +10121,9 @@ function parse(commitMessage, body, branchName, mainBranch, lookup, getScore) {
         const newMaintainer = !!body.match(/Maintainer changes/m);
         const lookupFn = lookup !== null && lookup !== void 0 ? lookup : (() => Promise.resolve({ alertState: '', ghsaId: '', cvss: 0 }));
         const scoreFn = getScore !== null && getScore !== void 0 ? getScore : (() => Promise.resolve(0));
+        core.info('yaml fragment');
+        core.info(JSON.stringify(yamlFragment === null || yamlFragment === void 0 ? void 0 : yamlFragment.groups));
+        core.info('branch name: ' + branchName);
         if ((yamlFragment === null || yamlFragment === void 0 ? void 0 : yamlFragment.groups) && branchName.startsWith('dependabot')) {
             const data = YAML.parse(yamlFragment.groups.dependencies);
             // Since we are on the `dependabot` branch (9 letters), the 10th letter in the branch name is the delimiter
