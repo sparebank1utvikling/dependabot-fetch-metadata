@@ -398,6 +398,157 @@ test('it handles branch names with hyphen separator and multiple dependencies', 
   expect(updatedDependencies[0].directory).toEqual('/')
 })
 
+test('it reads the directory from a grouped update commit message in a deep subdirectory', async () => {
+  // Reproduction of the real bug: a grouped npm update touching 10
+  // dependencies in a deep monorepo path. branchNameToDirectoryName subtracts
+  // one branch segment per dependency, driving the slice bounds negative and
+  // collapsing the directory to '/'. The commit message states the true
+  // directory verbatim, so we must use that instead.
+  const commitMessage =
+    'Bumps the frontend-non-major group with 10 updates in the /apps/group-one/product/web-app/frontend directory:\n' +
+    '\n' +
+    '| Package | From | To |\n' +
+    '\n' +
+    '---\n' +
+    'updated-dependencies:\n' +
+    '- dependency-name: react\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: react-dom\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: react-hook-form\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-minor\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: "@hookform/resolvers"\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: "@tanstack/react-query"\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: "@playwright/test"\n' +
+    '  dependency-type: direct:development\n' +
+    '  update-type: version-update:semver-minor\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: "@vitejs/plugin-react"\n' +
+    '  dependency-type: direct:development\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: happy-dom\n' +
+    '  dependency-type: direct:development\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: prettier\n' +
+    '  dependency-type: direct:development\n' +
+    '  update-type: version-update:semver-minor\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '- dependency-name: eslint\n' +
+    '  dependency-type: direct:development\n' +
+    '  update-type: version-update:semver-minor\n' +
+    '  dependency-group: frontend-non-major\n' +
+    '...\n' +
+    '\n' +
+    'Signed-off-by: dependabot[bot] <support@github.com>\n'
+
+  const branchName =
+    'dependabot/npm_and_yarn/apps/group-one/product/web-app/frontend/frontend-non-major-415f3f7289'
+
+  const updatedDependencies = await updateMetadata.parse(commitMessage, '', branchName, 'main', undefined, undefined)
+
+  expect(updatedDependencies).toHaveLength(10)
+  for (const dependency of updatedDependencies) {
+    expect(dependency.directory).toEqual('/apps/group-one/product/web-app/frontend')
+  }
+  expect(updatedDependencies[0].dependencyGroup).toEqual('frontend-non-major')
+})
+
+test('it wraps the directory path in backticks in the commit message', async () => {
+  const commitMessage =
+    'Bumps the rest group with 2 updates in the `/apps/foo/frontend` directory:\n' +
+    '\n' +
+    '---\n' +
+    'updated-dependencies:\n' +
+    '- dependency-name: react\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: rest\n' +
+    '- dependency-name: react-dom\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: rest\n' +
+    '...\n'
+
+  const branchName = 'dependabot/npm_and_yarn/apps/foo/frontend/rest-abc123'
+  const updatedDependencies = await updateMetadata.parse(commitMessage, '', branchName, 'main', undefined, undefined)
+
+  expect(updatedDependencies[0].directory).toEqual('/apps/foo/frontend')
+})
+
+test('it falls back to the branch-name heuristic for a grouped update at the repo root', async () => {
+  // No "in the ... directory" text -> directoryFromCommitMessage returns null
+  // -> existing branchNameToDirectoryName behaviour is preserved unchanged.
+  const commitMessage =
+    'Bumps the docker group with 2 updates: [github.com/docker/cli](https://github.com/docker/cli) and [github.com/moby/moby](https://github.com/moby/moby).\n' +
+    '\n' +
+    '---\n' +
+    'updated-dependencies:\n' +
+    '- dependency-name: github.com/docker/cli\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: docker\n' +
+    '- dependency-name: github.com/moby/moby\n' +
+    '  dependency-type: direct:production\n' +
+    '  update-type: version-update:semver-patch\n' +
+    '  dependency-group: docker\n' +
+    '...\n'
+
+  const updatedDependencies = await updateMetadata.parse(commitMessage, '', 'dependabot/docker/docker-and-moby-1234', 'main', undefined, undefined)
+
+  expect(updatedDependencies[0].directory).toEqual('/')
+})
+
+test('directoryFromCommitMessage extracts, normalizes, and returns null appropriately', () => {
+  // Grouped update with a stated directory.
+  expect(
+    updateMetadata.directoryFromCommitMessage(
+      'Bumps the g group with 3 updates in the /apps/foo/frontend directory:'
+    )
+  ).toEqual('/apps/foo/frontend')
+
+  // Trailing slash is normalized away; leading slash kept.
+  expect(
+    updateMetadata.directoryFromCommitMessage(
+      'Bumps the g group with 3 updates in the /apps/foo/ directory:'
+    )
+  ).toEqual('/apps/foo')
+
+  // Root directory stays '/'.
+  expect(
+    updateMetadata.directoryFromCommitMessage(
+      'Bumps the g group with 3 updates in the / directory:'
+    )
+  ).toEqual('/')
+
+  // No stated directory -> null (caller falls back to the branch heuristic).
+  expect(
+    updateMetadata.directoryFromCommitMessage(
+      'Bumps [coffee-rails](https://github.com/rails/coffee-rails) from 4.0.1 to 4.2.2.'
+    )
+  ).toBeNull()
+
+  // "across N directories" grouped updates do not name a single directory.
+  expect(
+    updateMetadata.directoryFromCommitMessage(
+      'Bumps the rest group across 2 directories with 5 updates:'
+    )
+  ).toBeNull()
+})
+
 test('calculateUpdateType should handle all paths', () => {
   expect(updateMetadata.calculateUpdateType('', '')).toEqual('')
   expect(updateMetadata.calculateUpdateType('', '1')).toEqual('')

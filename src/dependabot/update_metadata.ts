@@ -54,6 +54,28 @@ function branchNameToDirectoryName (chunks: string[], delimiter: string, updated
   return `/${chunks.slice(sliceStart, sliceEnd).join('/')}`
 }
 
+function normalizeDirectory (dir: string): string {
+  // Strip trailing slashes but keep the leading one; an empty result means
+  // the repo root.
+  const trimmed = dir.replace(/\/+$/, '')
+  return trimmed === '' ? '/' : trimmed
+}
+
+// Grouped Dependabot updates state their directory explicitly in the commit
+// message, e.g. "Bumps the my-group group with 10 updates in the
+// /apps/foo/frontend directory:". This is authoritative: unlike
+// branchNameToDirectoryName it never mis-slices based on how many
+// dependencies the group touches (that heuristic drives sliceEnd negative for
+// large groups and collapses the directory to "/"). Returns null when the
+// message does not state a directory (single-dependency root updates, older
+// formats), so the caller falls back to the branch-name heuristic and
+// existing behaviour is preserved. Optional backticks cover Dependabot
+// phrasings that wrap the path in `code`.
+export function directoryFromCommitMessage (commitMessage: string): string | null {
+  const match = commitMessage.match(/^Bumps\b.*\bin the `?(?<dir>\/[^\s`]*?)`? directory/m)
+  return match?.groups?.dir ? normalizeDirectory(match.groups.dir) : null
+}
+
 export async function parse (commitMessage: string, body: string, branchName: string, mainBranch: string, lookup?: alertLookup, getScore?: scoreLookup): Promise<Array<updatedDependency>> {
   const bumpFragment = commitMessage.match(/^Bumps .* from (?<from>v?\d[^ ]*) to (?<to>v?\d[^ ]*)\.$/m)
   const updateFragment = commitMessage.match(/^Update .* requirement from \S*? ?(?<from>v?\d\S*) to \S*? ?(?<to>v?\d\S*)$/m)
@@ -74,7 +96,12 @@ export async function parse (commitMessage: string, body: string, branchName: st
     const dependencyGroup = groupName?.groups?.name ?? ''
 
     if (data['updated-dependencies']) {
-      const dirname = branchNameToDirectoryName(chunks, delim, data['updated-dependencies'])
+      // Prefer the directory stated verbatim in the commit message; only fall
+      // back to reconstructing it from the branch name when the message does
+      // not carry one. This keeps single-dependency/root updates on their
+      // existing code path while fixing grouped updates in subdirectories,
+      // whose branch-name heuristic over-slices to "/".
+      const dirname = directoryFromCommitMessage(commitMessage) ?? branchNameToDirectoryName(chunks, delim, data['updated-dependencies'])
 
       return await Promise.all(data['updated-dependencies'].map(async (dependency, index) => {
         const lastVersion = index === 0 ? prev : ''
