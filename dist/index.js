@@ -10087,8 +10087,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.calculateUpdateType = exports.parse = void 0;
-const core = __importStar(__nccwpck_require__(2186));
+exports.calculateUpdateType = exports.parse = exports.directoryFromCommitMessage = void 0;
 const YAML = __importStar(__nccwpck_require__(4083));
 function branchNameToDirectoryName(chunks, delimiter, updatedDependencies) {
     // We can always slice after the first 2 pieces, because they will always contain "dependabot" followed by the name
@@ -10111,8 +10110,30 @@ function branchNameToDirectoryName(chunks, delimiter, updatedDependencies) {
     });
     return `/${chunks.slice(sliceStart, sliceEnd).join('/')}`;
 }
+function normalizeDirectory(dir) {
+    // Strip trailing slashes but keep the leading one; an empty result means
+    // the repo root.
+    const trimmed = dir.replace(/\/+$/, '');
+    return trimmed === '' ? '/' : trimmed;
+}
+// Grouped Dependabot updates state their directory explicitly in the commit
+// message, e.g. "Bumps the my-group group with 10 updates in the
+// /apps/foo/frontend directory:". This is authoritative: unlike
+// branchNameToDirectoryName it never mis-slices based on how many
+// dependencies the group touches (that heuristic drives sliceEnd negative for
+// large groups and collapses the directory to "/"). Returns null when the
+// message does not state a directory (single-dependency root updates, older
+// formats), so the caller falls back to the branch-name heuristic and
+// existing behaviour is preserved. Optional backticks cover Dependabot
+// phrasings that wrap the path in `code`.
+function directoryFromCommitMessage(commitMessage) {
+    var _a;
+    const match = commitMessage.match(/^Bumps\b.*\bin the `?(?<dir>\/[^\s`]*?)`? directory/m);
+    return ((_a = match === null || match === void 0 ? void 0 : match.groups) === null || _a === void 0 ? void 0 : _a.dir) ? normalizeDirectory(match.groups.dir) : null;
+}
+exports.directoryFromCommitMessage = directoryFromCommitMessage;
 function parse(commitMessage, body, branchName, mainBranch, lookup, getScore) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     return __awaiter(this, void 0, void 0, function* () {
         const bumpFragment = commitMessage.match(/^Bumps .* from (?<from>v?\d[^ ]*) to (?<to>v?\d[^ ]*)\.$/m);
         const updateFragment = commitMessage.match(/^Update .* requirement from \S*? ?(?<from>v?\d\S*) to \S*? ?(?<to>v?\d\S*)$/m);
@@ -10121,9 +10142,6 @@ function parse(commitMessage, body, branchName, mainBranch, lookup, getScore) {
         const newMaintainer = !!body.match(/Maintainer changes/m);
         const lookupFn = lookup !== null && lookup !== void 0 ? lookup : (() => Promise.resolve({ alertState: '', ghsaId: '', cvss: 0 }));
         const scoreFn = getScore !== null && getScore !== void 0 ? getScore : (() => Promise.resolve(0));
-        core.info('yaml fragment');
-        core.info(JSON.stringify(yamlFragment === null || yamlFragment === void 0 ? void 0 : yamlFragment.groups));
-        core.info('branch name: ' + branchName);
         if ((yamlFragment === null || yamlFragment === void 0 ? void 0 : yamlFragment.groups) && branchName.startsWith('dependabot')) {
             const data = YAML.parse(yamlFragment.groups.dependencies);
             // Since we are on the `dependabot` branch (9 letters), the 10th letter in the branch name is the delimiter
@@ -10133,7 +10151,12 @@ function parse(commitMessage, body, branchName, mainBranch, lookup, getScore) {
             const next = (_f = (_e = bumpFragment === null || bumpFragment === void 0 ? void 0 : bumpFragment.groups) === null || _e === void 0 ? void 0 : _e.to) !== null && _f !== void 0 ? _f : ((_h = (_g = updateFragment === null || updateFragment === void 0 ? void 0 : updateFragment.groups) === null || _g === void 0 ? void 0 : _g.to) !== null && _h !== void 0 ? _h : '');
             const dependencyGroup = (_k = (_j = groupName === null || groupName === void 0 ? void 0 : groupName.groups) === null || _j === void 0 ? void 0 : _j.name) !== null && _k !== void 0 ? _k : '';
             if (data['updated-dependencies']) {
-                const dirname = branchNameToDirectoryName(chunks, delim, data['updated-dependencies']);
+                // Prefer the directory stated verbatim in the commit message; only fall
+                // back to reconstructing it from the branch name when the message does
+                // not carry one. This keeps single-dependency/root updates on their
+                // existing code path while fixing grouped updates in subdirectories,
+                // whose branch-name heuristic over-slices to "/".
+                const dirname = (_l = directoryFromCommitMessage(commitMessage)) !== null && _l !== void 0 ? _l : branchNameToDirectoryName(chunks, delim, data['updated-dependencies']);
                 return yield Promise.all(data['updated-dependencies'].map((dependency, index) => __awaiter(this, void 0, void 0, function* () {
                     const lastVersion = index === 0 ? prev : '';
                     const nextVersion = index === 0 ? next : '';
@@ -10214,14 +10237,8 @@ function parseNwo(nwo) {
 }
 exports.parseNwo = parseNwo;
 function getBranchNames(context) {
-    const pr = getPR(context);
-    if (!pr) {
-        throw new Error('No PR found in context');
-    }
-    return {
-        headName: pr.head.ref,
-        baseName: pr.base.ref
-    };
+    const { pull_request: pr } = context.payload;
+    return { headName: (pr === null || pr === void 0 ? void 0 : pr.head.ref) || '', baseName: pr === null || pr === void 0 ? void 0 : pr.base.ref };
 }
 exports.getBranchNames = getBranchNames;
 function getBody(context, client) {
@@ -10331,7 +10348,6 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
             repo: context.repo.repo,
             pull_number: pr.number
         });
-        core.info(`Found ${commits.length} commits in the PR`);
         const { commit, author } = commits[0];
         if (!skipVerification && (author === null || author === void 0 ? void 0 : author.login) !== DEPENDABOT_LOGIN) {
             // TODO: Promote to setFailed
@@ -10343,7 +10359,6 @@ function getMessage(client, context, skipCommitVerification = false, skipVerific
             core.warning("Dependabot's commit signature is not verified, refusing to proceed.");
             return false;
         }
-        core.info(`Returning commit message: ${commit.message}`);
         return commit.message;
     });
 }
@@ -10473,7 +10488,6 @@ function run() {
             const scoreLookup = core.getInput('compat-lookup') ? verifiedCommits.getCompatibility : undefined;
             if (commitMessage) {
                 // Parse metadata
-                core.info(commitMessage);
                 core.info('Parsing Dependabot metadata');
                 const updatedDependencies = yield updateMetadata.parse(commitMessage, body, branchNames.headName, branchNames.baseName, alertLookup, scoreLookup);
                 if (updatedDependencies.length > 0) {
